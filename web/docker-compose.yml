@@ -1,0 +1,111 @@
+services:
+  # ─── MongoDB ───────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: ids-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: ids
+    networks:
+      - ids-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: ids-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ids-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── ML Microservice (FastAPI / Python) ────────────────────
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: ids-ml-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../results:/app/data/results:ro
+      - ../data:/app/data/datasets:ro
+    environment:
+      - RESULTS_DIR=/app/data/results
+      - DATASETS_DIR=/app/data/datasets
+    networks:
+      - ids-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ─── Backend (Express.js / TypeScript) ─────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ids-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/ids
+      - REDIS_URL=redis://redis:6379
+      - ML_SERVICE_URL=http://ml-service:8000
+      - JWT_SECRET=${JWT_SECRET:-cybershield-dev-secret-change-in-production}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-cybershield-refresh-secret-change-in-production}
+      - CORS_ORIGIN=http://localhost:3000
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ml-service:
+        condition: service_healthy
+    networks:
+      - ids-network
+
+  # ─── Frontend (React / Vite) ───────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ids-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - ids-network
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  ids-network:
+    driver: bridge

@@ -1,0 +1,5 @@
+# Complete install set for running the trained-model web demo.
+# (requirements-optional.txt is no longer needed: XGBoost/LightGBM were removed
+# when the models were replaced with the scikit-learn models from ids_results.py.)
+-r requirements.txt
+streamlit>=1.35

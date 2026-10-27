@@ -1,0 +1,7 @@
+# Core packages (tested in the workspace with Python 3.13.16)
+# All three models (Decision Tree, Gaussian Naive Bayes, SVM-RBF) are scikit-learn built-ins.
+numpy>=2.0
+pandas>=2.2
+scikit-learn>=1.4
+matplotlib>=3.8
+joblib>=1.3

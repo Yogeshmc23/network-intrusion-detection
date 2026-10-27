@@ -1,0 +1,21 @@
+@'
+.venv/
+.venv*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+web/frontend/node_modules/
+web/frontend/dist/
+web/backend/node_modules/
+web/backend/dist/
+.env
+.env.*
+!.env.example
+
+'@ | Set-Content .gitignore
+Train_data.csv
+Test_data.csv
+data/

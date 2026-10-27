@@ -1,0 +1,4 @@
+# No optional learners are used any more.
+# XGBoost/LightGBM were removed when the codebase models were replaced with the
+# three scikit-learn models from ids_results.py (Decision Tree, Gaussian Naive Bayes, SVM-RBF).
+# This file is kept (installing nothing) so older commands referencing it do not break.
