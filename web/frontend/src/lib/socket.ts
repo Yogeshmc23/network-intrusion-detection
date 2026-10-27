@@ -44,11 +44,10 @@ class LiveSocketManager {
     recordsPerSec: 0,
   };
 
-  private simInterval: NodeJS.Timeout | null = null;
+private simInterval: ReturnType<typeof setInterval> | null = null;
   private simSpeedMs: number = 1000;
   private recentRecordsCount: number = 0;
-  private speedTimer: NodeJS.Timeout | null = null;
-
+private speedTimer: ReturnType<typeof setInterval> | null = null;
   connect() {
     if (this.socket && this.socket.connected) return;
 
