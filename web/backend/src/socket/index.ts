@@ -8,9 +8,15 @@ let ioInstance: Server | null = null;
 let liveNamespace: Namespace | null = null;
 
 export function initSocket(server: HttpServer): Server {
+  const socketOrigins = env.CORS_ORIGINS.includes('*')
+    ? true
+    : env.isProd
+      ? env.CORS_ORIGINS
+      : [...env.CORS_ORIGINS, 'http://localhost:3000', 'http://127.0.0.1:3000'];
+
   ioInstance = new Server(server, {
     cors: {
-      origin: env.CORS_ORIGIN === '*' ? true : [env.CORS_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+      origin: socketOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },
