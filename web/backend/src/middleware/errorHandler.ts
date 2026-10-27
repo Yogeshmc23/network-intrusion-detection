@@ -6,12 +6,15 @@ import logger from '../utils/logger';
 export class AppError extends Error {
   public statusCode: number;
   public isOperational: boolean;
+  /** Stable, machine-readable reason (e.g. TOKEN_EXPIRED) for API clients. */
+  public code?: string;
   public errors?: any[];
 
-  constructor(message: string, statusCode = 500, errors?: any[]) {
+  constructor(message: string, statusCode = 500, code?: string, errors?: any[]) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = true;
+    this.code = code;
     this.errors = errors;
     Error.captureStackTrace(this, this.constructor);
   }
@@ -89,6 +92,7 @@ export function errorHandler(
   res.status(statusCode).json({
     success: false,
     message,
+    ...(err.code ? { code: err.code } : {}),
     ...(errors ? { errors } : {}),
     ...(env.isDev && err.stack ? { stack: err.stack } : {}),
   });

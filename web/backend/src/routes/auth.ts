@@ -70,7 +70,7 @@ authRouter.post('/signup', async (req: Request, res: Response, next: NextFunctio
 
     const existingUser = await User.findOne({ email: validated.email });
     if (existingUser) {
-      throw new AppError('An account with this email already exists', 409);
+      throw new AppError('An account with this email already exists', 409, 'EMAIL_IN_USE');
     }
 
     const user = new User({
@@ -148,12 +148,12 @@ authRouter.post('/login', async (req: Request, res: Response, next: NextFunction
 
     const user = await User.findOne({ email: validated.email });
     if (!user) {
-      throw new AppError('Invalid email or password', 401);
+      throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
     const isMatch = await user.comparePassword(validated.password);
     if (!isMatch) {
-      throw new AppError('Invalid email or password', 401);
+      throw new AppError('Invalid email or password', 401, 'INVALID_CREDENTIALS');
     }
 
     const tokenPayload = {
@@ -222,13 +222,22 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
     let decoded;
     try {
       decoded = verifyRefreshToken(validated.refreshToken);
-    } catch (err) {
-      throw new AppError('Invalid or expired refresh token', 401);
+    } catch (err: any) {
+      if (err?.name === 'TokenExpiredError') {
+        throw new AppError('Invalid or expired refresh token', 401, 'REFRESH_TOKEN_EXPIRED');
+      }
+      // Covers bad signatures, malformed tokens AND access tokens replayed here
+      // (token type is part of the verification).
+      throw new AppError('Invalid or expired refresh token', 401, 'REFRESH_TOKEN_INVALID');
     }
 
     const user = await User.findById(decoded.id);
     if (!user) {
-      throw new AppError('User belonging to this token no longer exists', 401);
+      throw new AppError(
+        'User belonging to this token no longer exists',
+        401,
+        'SESSION_REVOKED'
+      );
     }
 
     const tokenPayload = {
@@ -276,7 +285,7 @@ authRouter.get('/me', authenticate, async (req: Request, res: Response, next: Ne
   try {
     const user = await User.findById(req.user!.id);
     if (!user) {
-      throw new AppError('User not found', 404);
+      throw new AppError('User not found', 404, 'USER_NOT_FOUND');
     }
 
     res.status(200).json({
