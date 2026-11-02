@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { motion } from 'framer-motion';
-import { Shield, Lock, Mail, ArrowRight, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/apiErrors';
 import { useToast } from '@/components/ui/toast';
 
 const loginSchema = z.object({
@@ -21,7 +22,8 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function Login() {
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const location = useLocation();
+  const setAuth = useAuthStore((state) => state.setAuth);
   const { toast } = useToast();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,7 +31,6 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    setValue,
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -38,6 +39,10 @@ export default function Login() {
       password: '',
     },
   });
+
+  // Return the analyst to the page that redirected them here (if any).
+  const redirectTarget =
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/dashboard';
 
   const onSubmit = async (data: LoginFormData) => {
     setLoading(true);
@@ -49,30 +54,19 @@ export default function Login() {
         description: `Welcome back, ${res.user.name || 'Analyst'}!`,
         variant: 'success',
       });
-      navigate('/dashboard');
-    } catch (err: any) {
-      // In offline/dev mode without running backend, fallback to dev analyst session
-      const fallbackUser = {
-        id: 'usr_dev1',
-        name: data.email.split('@')[0] || 'Security Analyst',
-        email: data.email,
-        role: 'Senior SOC Analyst',
-      };
-      setAuth(fallbackUser, 'mock_access_token_cybershield', 'mock_refresh_token_cybershield');
+      navigate(redirectTarget === '/login' ? '/dashboard' : redirectTarget, { replace: true });
+    } catch (err) {
+      // Never fabricate a session when the backend rejects the credentials:
+      // fake tokens would 401 on every later request and log the user straight
+      // back out. Surface the real error instead.
       toast({
-        title: 'Signed in (Dev/Offline Mode)',
-        description: 'Connected with local analyst credentials.',
-        variant: 'info',
+        title: 'Sign in failed',
+        description: getApiErrorMessage(err, 'Invalid email or password.'),
+        variant: 'destructive',
       });
-      navigate('/dashboard');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFillDemo = () => {
-    setValue('email', 'analyst@cybershield.io');
-    setValue('password', 'CyberShield#2026');
   };
 
   return (
@@ -156,16 +150,6 @@ export default function Login() {
                   Sign In to Terminal <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
-
-              {/* Demo quick fill button */}
-              <button
-                type="button"
-                onClick={handleFillDemo}
-                className="w-full py-2 px-3 rounded-lg border border-cyan-500/20 bg-cyan-950/20 hover:bg-cyan-950/40 text-cyan-300 text-xs font-mono flex items-center justify-center gap-2 transition-colors"
-              >
-                <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
-                Fill Demo Analyst Credentials
-              </button>
             </form>
           </CardContent>
 

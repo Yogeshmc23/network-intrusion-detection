@@ -36,15 +36,30 @@ app.use(
   })
 );
 
+const allowedOrigins = new Set(env.CORS_ORIGINS);
+const localhostOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, postman) or matching origins
-      if (!origin || origin === env.CORS_ORIGIN || origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        callback(null, true);
-      } else {
-        callback(null, true); // Permissive in dev, can restrict in prod
+      // Allow same-origin / server-to-server requests (no Origin header).
+      if (!origin) {
+        return callback(null, true);
       }
+
+      if (allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      // Convenience for local development on any loopback port.
+      if (!env.isProd && localhostOriginPattern.test(origin)) {
+        return callback(null, true);
+      }
+
+      logger.warn(`Blocked CORS request from origin: ${origin}`);
+      return callback(
+        new AppError(`Origin ${origin} is not allowed by CORS policy`, 403, 'CORS_ORIGIN_DENIED')
+      );
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -125,6 +140,13 @@ app.use(errorHandler);
 async function bootstrap(): Promise<void> {
   try {
     logger.info('Initializing CyberShield IDS Backend...');
+
+    if (env.usesInsecureJwtSecrets) {
+      logger.warn(
+        'SECURITY: JWT secrets are missing, identical or still set to the shipped defaults. ' +
+          'Set unique JWT_SECRET and JWT_REFRESH_SECRET values before exposing this service.'
+      );
+    }
 
     // 1. Connect to MongoDB
     await connectDB();

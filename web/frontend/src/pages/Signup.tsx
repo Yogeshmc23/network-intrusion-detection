@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/apiErrors';
 import { useToast } from '@/components/ui/toast';
 
 const signupSchema = z
@@ -28,7 +29,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { setAuth } = useAuthStore();
+  const setAuth = useAuthStore((state) => state.setAuth);
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -61,21 +62,15 @@ export default function Signup() {
         variant: 'success',
       });
       navigate('/dashboard');
-    } catch (err: any) {
-      // In offline/dev mode without running backend, fallback to dev analyst session
-      const fallbackUser = {
-        id: `usr_${Date.now()}`,
-        name: data.name,
-        email: data.email,
-        role: 'SOC Analyst',
-      };
-      setAuth(fallbackUser, 'mock_access_token_cybershield', 'mock_refresh_token_cybershield');
+    } catch (err) {
+      // Do not invent a session when registration fails (duplicate email,
+      // validation error, outage, ...): fake tokens would immediately 401 and
+      // bounce the analyst back to this page.
       toast({
-        title: 'Analyst Profile Created',
-        description: 'Session initialized successfully.',
-        variant: 'success',
+        title: 'Registration failed',
+        description: getApiErrorMessage(err, 'Could not create your analyst account.'),
+        variant: 'destructive',
       });
-      navigate('/dashboard');
     } finally {
       setLoading(false);
     }
