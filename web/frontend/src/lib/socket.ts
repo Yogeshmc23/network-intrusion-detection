@@ -8,8 +8,8 @@ export interface LiveRecord {
   service: string;
   src_bytes: number;
   dst_bytes: number;
-  count: number;
-  dst_host_srv_count: number;
+  count?: number;
+  dst_host_srv_count?: number;
   prediction: 'anomaly' | 'normal' | 'Dos' | 'Probe' | 'R2L' | 'U2R';
   confidence: number;
   is_anomaly: boolean;
@@ -44,9 +44,7 @@ class LiveSocketManager {
     recordsPerSec: 0,
   };
 
-private simInterval: ReturnType<typeof setInterval> | null = null;
-  private simSpeedMs: number = 1000;
-  private recentRecordsCount: number = 0;
+private recentRecordsCount: number = 0;
 private speedTimer: ReturnType<typeof setInterval> | null = null;
   connect() {
     if (this.socket && this.socket.connected) return;
@@ -75,16 +73,17 @@ private speedTimer: ReturnType<typeof setInterval> | null = null;
 
       this.socket.on('prediction', (data: any) => {
         const record = this.normalizeRecord(data);
+        if (!record) return;
         this.updateStats(record);
         this.recordListeners.forEach((fn) => fn(record));
       });
 
       this.socket.on('alert', (data: any) => {
         const record = this.normalizeRecord(data);
-        this.alertListeners.forEach((fn) => fn(record));
+        if (record) this.alertListeners.forEach((fn) => fn(record));
       });
     } catch (e) {
-      console.warn('Socket connection error, simulation ready', e);
+      // Keep the interface quiet; connection state is visible in the monitor.
       this.notifyConnection(false);
     }
 
@@ -98,29 +97,46 @@ private speedTimer: ReturnType<typeof setInterval> | null = null;
     }
   }
 
-  private normalizeRecord(data: any): LiveRecord {
-    const isAnomaly =
-      data.is_anomaly ??
-      (data.prediction === 'anomaly' ||
-        ['Dos', 'Probe', 'R2L', 'U2R'].includes(data.prediction));
+  private normalizeRecord(data: any): LiveRecord | null {
+    const features = data?.features ?? {};
+    const id = data?.id;
+    const timestamp = data?.timestamp;
+    const prediction = data?.prediction;
+    const rawScore = Number(data?.rawScore ?? data?.anomaly_score ?? data?.score);
+    const confidence = Number(data?.confidence);
+    const threshold = Number(data?.threshold);
+    const srcBytes = Number(data?.src_bytes ?? features.src_bytes);
+    const dstBytes = Number(data?.dst_bytes ?? features.dst_bytes);
+    if (
+      typeof id !== 'string' || !id || typeof timestamp !== 'string' || !Number.isFinite(Date.parse(timestamp)) ||
+      !['anomaly', 'normal', 'Dos', 'Probe', 'R2L', 'U2R'].includes(prediction) ||
+      !Number.isFinite(rawScore) || !Number.isFinite(confidence) || !Number.isFinite(threshold) ||
+      !Number.isFinite(srcBytes) || !Number.isFinite(dstBytes)
+    ) return null;
 
+    const predictedAnomaly = prediction !== 'normal';
+    const isAnomaly = typeof data.is_anomaly === 'boolean'
+      ? data.is_anomaly
+      : (typeof data.isAnomaly === 'boolean' ? data.isAnomaly : predictedAnomaly);
+    const count = Number(data.count ?? features.count);
+    const hostCount = Number(data.dst_host_srv_count ?? features.dst_host_srv_count);
     return {
-      id: data.id || `live-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: data.timestamp || new Date().toISOString(),
-      protocol_type: data.protocol_type || data.features?.protocol_type || 'tcp',
-      service: data.service || data.features?.service || 'http',
-      src_bytes: Number(data.src_bytes ?? data.features?.src_bytes ?? 215),
-      dst_bytes: Number(data.dst_bytes ?? data.features?.dst_bytes ?? 450),
-      count: Number(data.count ?? data.features?.count ?? 8),
-      dst_host_srv_count: Number(data.dst_host_srv_count ?? data.features?.dst_host_srv_count ?? 255),
-      prediction: data.prediction || (isAnomaly ? 'anomaly' : 'normal'),
-      confidence: Number(data.confidence ?? (isAnomaly ? 0.94 : 0.98)),
+      id,
+      timestamp,
+      protocol_type: String(data.protocol_type ?? features.protocol_type ?? 'unknown'),
+      service: String(data.service ?? features.service ?? 'unknown'),
+      src_bytes: srcBytes,
+      dst_bytes: dstBytes,
+      count: Number.isFinite(count) ? count : undefined,
+      dst_host_srv_count: Number.isFinite(hostCount) ? hostCount : undefined,
+      prediction,
+      confidence,
       is_anomaly: isAnomaly,
-      score: Number(data.score ?? data.anomaly_score ?? (isAnomaly ? 0.89 : 0.04)),
-      threshold: Number(data.threshold ?? 0.572553),
-      model: data.model || 'LightGBM (operational)',
-      flag: data.flag || data.features?.flag || 'SF',
-      duration: Number(data.duration ?? data.features?.duration ?? 0),
+      score: rawScore,
+      threshold,
+      model: String(data.model ?? data.modelUsed ?? data.model_name ?? 'Unknown model'),
+      flag: data.flag ?? features.flag,
+      duration: Number.isFinite(Number(data.duration ?? features.duration)) ? Number(data.duration ?? features.duration) : undefined,
     };
   }
 
@@ -137,15 +153,9 @@ private speedTimer: ReturnType<typeof setInterval> | null = null;
   }
 
   startStream(recordsPerSec: number = 2) {
+    if (!this.socket?.connected) return;
     this.isStreaming = true;
-    this.simSpeedMs = Math.max(100, Math.floor(1000 / recordsPerSec));
-
-    if (this.socket && this.socket.connected) {
-      this.socket.emit('start-stream', { speed: recordsPerSec });
-    } else {
-      // Offline/fallback synthetic stream
-      this.startSimulation();
-    }
+    this.socket.emit('start-stream', { speed: recordsPerSec });
   }
 
   stopStream() {
@@ -153,14 +163,9 @@ private speedTimer: ReturnType<typeof setInterval> | null = null;
     if (this.socket && this.socket.connected) {
       this.socket.emit('stop-stream');
     }
-    if (this.simInterval) {
-      clearInterval(this.simInterval);
-      this.simInterval = null;
-    }
   }
 
   setSpeed(recordsPerSec: number) {
-    this.simSpeedMs = Math.max(100, Math.floor(1000 / recordsPerSec));
     if (this.isStreaming) {
       this.startStream(recordsPerSec);
     }
@@ -176,47 +181,6 @@ private speedTimer: ReturnType<typeof setInterval> | null = null;
     };
     this.recentRecordsCount = 0;
     this.notifyStats();
-  }
-
-  private startSimulation() {
-    if (this.simInterval) clearInterval(this.simInterval);
-
-    const protocols = ['tcp', 'udp', 'icmp'];
-    const services = ['http', 'smtp', 'ftp', 'private', 'domain_u', 'eco_i', 'telnet'];
-    const anomalyTypes: ('anomaly' | 'Dos' | 'Probe' | 'R2L')[] = ['anomaly', 'Dos', 'Probe', 'R2L'];
-
-    this.simInterval = setInterval(() => {
-      if (!this.isStreaming) return;
-
-      const isAnomaly = Math.random() < 0.22; // ~22% anomaly distribution
-      const proto = protocols[Math.floor(Math.random() * protocols.length)];
-      const svc = services[Math.floor(Math.random() * services.length)];
-
-      const record: LiveRecord = {
-        id: `rec-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
-        timestamp: new Date().toISOString(),
-        protocol_type: proto,
-        service: svc,
-        src_bytes: isAnomaly ? Math.floor(Math.random() * 50000 + 1000) : Math.floor(Math.random() * 800 + 40),
-        dst_bytes: isAnomaly ? Math.floor(Math.random() * 200) : Math.floor(Math.random() * 15000 + 500),
-        count: isAnomaly ? Math.floor(Math.random() * 450 + 50) : Math.floor(Math.random() * 20 + 1),
-        dst_host_srv_count: isAnomaly ? Math.floor(Math.random() * 30 + 1) : Math.floor(Math.random() * 200 + 55),
-        prediction: isAnomaly ? anomalyTypes[Math.floor(Math.random() * anomalyTypes.length)] : 'normal',
-        confidence: Number((0.85 + Math.random() * 0.14).toFixed(4)),
-        is_anomaly: isAnomaly,
-        score: Number((isAnomaly ? 0.65 + Math.random() * 0.34 : Math.random() * 0.25).toFixed(4)),
-        threshold: 0.572553,
-        model: 'LightGBM (operational)',
-        flag: isAnomaly ? 'S0' : 'SF',
-        duration: Math.floor(Math.random() * 4),
-      };
-
-      this.updateStats(record);
-      this.recordListeners.forEach((fn) => fn(record));
-      if (isAnomaly) {
-        this.alertListeners.forEach((fn) => fn(record));
-      }
-    }, this.simSpeedMs);
   }
 
   onRecord(callback: (record: LiveRecord) => void) {

@@ -21,9 +21,9 @@ const buttonVariants = cva(
         link:
           'text-cyan-400 underline-offset-4 hover:underline p-0 h-auto',
         cyber:
-          'bg-gradient-to-r from-cyan-500 via-teal-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-95 shadow-lg shadow-cyan-500/25',
+          'bg-cyan-500 text-slate-950 font-semibold hover:bg-cyan-400',
         purple:
-          'bg-purple-600 text-white hover:bg-purple-500 shadow-lg shadow-purple-600/20',
+          'bg-cyan-700 text-white hover:bg-cyan-600 shadow-md shadow-cyan-900/20',
       },
       size: {
         default: 'h-10 px-4 py-2',

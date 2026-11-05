@@ -20,66 +20,14 @@ export interface ModelMetricData {
   rocAuc: number;
 }
 
-// Fallback defaults: actual holdout rows from results/metrics.csv
-const defaultData: ModelMetricData[] = [
-  {
-    model: 'DT (All)',
-    accuracy: 0.9972,
-    precision: 0.9974,
-    recall: 0.9966,
-    f1: 0.9970,
-    rocAuc: 0.9972,
-  },
-  {
-    model: 'NB (All)',
-    accuracy: 0.7146,
-    precision: 0.9935,
-    recall: 0.3904,
-    f1: 0.5605,
-    rocAuc: 0.9804,
-  },
-  {
-    model: 'SVM (All)',
-    accuracy: 0.9895,
-    precision: 0.9869,
-    recall: 0.9906,
-    f1: 0.9887,
-    rocAuc: 0.9981,
-  },
-  {
-    model: 'DT (Top-30)',
-    accuracy: 0.9895,
-    precision: 0.9881,
-    recall: 0.9894,
-    f1: 0.9887,
-    rocAuc: 0.9899,
-  },
-  {
-    model: 'NB (Top-30)',
-    accuracy: 0.9430,
-    precision: 0.9296,
-    recall: 0.9498,
-    f1: 0.9396,
-    rocAuc: 0.9787,
-  },
-  {
-    model: 'SVM (Top-30)',
-    accuracy: 0.9788,
-    precision: 0.9891,
-    recall: 0.9651,
-    f1: 0.9769,
-    rocAuc: 0.9963,
-  },
-];
-
 interface MetricsBarChartProps {
-  data?: ModelMetricData[];
+  data: ModelMetricData[];
   className?: string;
   height?: number;
 }
 
 export function MetricsBarChart({
-  data = defaultData,
+  data,
   className,
   height = 300,
 }: MetricsBarChartProps) {
@@ -120,7 +68,7 @@ export function MetricsBarChart({
             <Bar dataKey="accuracy" name="Accuracy" fill="#38bdf8" radius={[4, 4, 0, 0]} />
             <Bar dataKey="precision" name="Precision" fill="#14b8a6" radius={[4, 4, 0, 0]} />
             <Bar dataKey="recall" name="Recall" fill="#06b6d4" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="f1" name="F1-Score" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="f1" name="F1-Score" fill="#0284c7" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

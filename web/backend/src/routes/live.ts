@@ -15,11 +15,11 @@ const streamStartSchema = z.object({
  * @openapi
  * /api/live/status:
  *   get:
- *     summary: Get status of real-time traffic streaming
+ *     summary: Get status of live event-source availability
  *     tags: [Live Monitoring]
  *     responses:
  *       200:
- *         description: Live stream operational metrics
+ *         description: Event-source availability; no stream counters are produced without a configured source
  *         content:
  *           application/json:
  *             schema:
@@ -29,12 +29,9 @@ const streamStartSchema = z.object({
  *                 status:
  *                   type: object
  *                   properties:
+ *                     sourceConfigured: { type: boolean, example: false }
  *                     isRunning: { type: boolean, example: false }
- *                     speed: { type: number, example: 1 }
- *                     threshold: { type: number, example: 0.5 }
- *                     recordsEmitted: { type: number, example: 142 }
- *                     alertsEmitted: { type: number, example: 18 }
- *                     connectedClients: { type: number, example: 2 }
+ *                     connectedClients: { type: number }
  */
 liveRouter.get('/status', (_req: Request, res: Response) => {
   const status = liveStreamService.getStatus();
@@ -54,7 +51,7 @@ liveRouter.get('/status', (_req: Request, res: Response) => {
  * @openapi
  * /api/live/start:
  *   post:
- *     summary: Start the simulated network traffic stream
+ *     summary: Request live network monitoring
  *     tags: [Live Monitoring]
  *     requestBody:
  *       content:
@@ -72,28 +69,13 @@ liveRouter.get('/status', (_req: Request, res: Response) => {
  *                 default: 0.5
  *                 example: 0.5
  *     responses:
- *       200:
- *         description: Stream initiated successfully
- *       400:
- *         description: Socket namespace not initialized
+ *       503:
+ *         description: No packet-capture or event source is configured
  */
 liveRouter.post('/start', (req: Request, res: Response, next: NextFunction) => {
   try {
-    const validated = streamStartSchema.parse(req.body);
-    const liveNamespace = getLiveNamespace();
-
-    if (!liveNamespace) {
-      throw new AppError('Socket.IO /live namespace is not ready', 500);
-    }
-
-    const status = liveStreamService.start(liveNamespace, validated);
-    liveNamespace.emit('status', status);
-
-    res.status(200).json({
-      success: true,
-      message: 'Live traffic simulation started',
-      status,
-    });
+    streamStartSchema.parse(req.body);
+    throw new AppError('No live packet-capture or event source is configured', 503, 'LIVE_SOURCE_UNAVAILABLE');
   } catch (error) {
     next(error);
   }
@@ -103,7 +85,7 @@ liveRouter.post('/start', (req: Request, res: Response, next: NextFunction) => {
  * @openapi
  * /api/live/stop:
  *   post:
- *     summary: Stop the simulated network traffic stream
+ *     summary: Stop live monitoring
  *     tags: [Live Monitoring]
  *     responses:
  *       200:
@@ -118,7 +100,7 @@ liveRouter.post('/stop', (_req: Request, res: Response) => {
 
   res.status(200).json({
     success: true,
-    message: 'Live traffic simulation stopped',
+    message: 'Live monitoring is inactive; no source is configured',
     status,
   });
 });

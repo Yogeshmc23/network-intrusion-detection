@@ -34,13 +34,12 @@ const PredictionSchema = new Schema<IPrediction>(
     },
     modelUsed: {
       type: String,
-      default: 'LightGBM (optional)',
+      required: true,
       trim: true,
     },
     threshold: {
       type: Number,
       required: true,
-      default: 0.5,
     },
     createdAt: {
       type: Date,

@@ -73,9 +73,9 @@ services:
       - MONGO_URI=mongodb://mongodb:27017/ids
       - REDIS_URL=redis://redis:6379
       - ML_SERVICE_URL=http://ml-service:8000
-      - JWT_SECRET=${JWT_SECRET:-cybershield-dev-secret-change-in-production}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-cybershield-refresh-secret-change-in-production}
-      - CORS_ORIGIN=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in web/.env or the environment}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in web/.env or the environment}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
     depends_on:
       mongodb:
         condition: service_healthy
@@ -83,6 +83,12 @@ services:
         condition: service_healthy
       ml-service:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:5000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - ids-network
 
@@ -96,7 +102,8 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - ids-network
 

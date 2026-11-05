@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -64,13 +65,19 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# Configure CORS Middleware allowing all origins for local and cross-container development
+# Restrict browser CORS to configured origins. Backend-to-backend calls do not
+# depend on CORS and remain available on the Docker network.
+ml_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("ML_CORS_ORIGINS", "http://localhost:3000,http://localhost:5000").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ml_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Register route modules
@@ -131,7 +138,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "error": "Internal Server Error",
-            "message": str(exc),
+            "message": "The service encountered an unexpected error. Please retry or check the service logs.",
             "path": request.url.path,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },

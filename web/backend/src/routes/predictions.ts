@@ -18,7 +18,7 @@ const upload = multer({
     if (
       file.mimetype === 'text/csv' ||
       file.mimetype === 'application/vnd.ms-excel' ||
-      file.originalname.endsWith('.csv') ||
+      file.originalname.toLowerCase().endsWith('.csv') ||
       file.mimetype === 'application/json' ||
       file.originalname.endsWith('.json')
     ) {
@@ -29,24 +29,38 @@ const upload = multer({
   },
 });
 
-// Helper: parse CSV buffer to array of key-value records
-function parseCsv(buffer: Buffer): Array<Record<string, any>> {
-  const text = buffer.toString('utf-8');
-  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+// CSV parser that preserves quoted commas and escaped double quotes.
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"' && quoted && line[i + 1] === '"') { cell += '"'; i += 1; }
+    else if (char === '"') quoted = !quoted;
+    else if (char === ',' && !quoted) { cells.push(cell.trim()); cell = ''; }
+    else cell += char;
+  }
+  if (quoted) throw new AppError('The CSV contains an unmatched quotation mark', 400);
+  cells.push(cell.trim());
+  return cells;
+}
+
+export function parseCsv(buffer: Buffer): Array<Record<string, any>> {
+  const lines = buffer.toString('utf-8').replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) return [];
-
-  const headers = lines[0].split(',').map((h) => h.trim().replace(/^"|"$/g, ''));
+  const headers = parseCsvLine(lines[0]).map((header) => header.replace(/^"|"$/g, '').trim());
+  if (!headers.length || headers.some((header) => !header)) throw new AppError('CSV column headers are required', 400);
   const records: Array<Record<string, any>> = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
-    if (values.length !== headers.length) continue;
-
+  for (let i = 1; i < lines.length; i += 1) {
+    const values = parseCsvLine(lines[i]);
+    if (values.length !== headers.length) throw new AppError(`CSV row ${i + 1} has a different number of columns than the header`, 400);
     const row: Record<string, any> = {};
     headers.forEach((header, idx) => {
-      const raw = values[idx];
-      const num = Number(raw);
-      row[header] = !isNaN(num) && raw !== '' ? num : raw;
+      const value = values[idx];
+      if (value === '') row[header] = '';
+      else if (/^-?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value)) row[header] = Number(value);
+      else row[header] = value;
     });
     records.push(row);
   }
@@ -93,6 +107,7 @@ async function handleSinglePredict(req: Request, res: Response, next: NextFuncti
       predictionId: record._id.toString(),
       prediction: mlResult.prediction,
       confidence: mlResult.confidence,
+      rawScore: mlResult.rawScore,
       threshold: mlResult.threshold,
       modelUsed: mlResult.modelUsed,
       isAnomaly: mlResult.isAnomaly,
@@ -115,16 +130,19 @@ async function handleBatchPredict(req: Request, res: Response, next: NextFunctio
     if (req.file) {
       // Uploaded CSV or JSON file
       const fileContent = req.file.buffer;
-      if (req.file.originalname.endsWith('.json') || req.file.mimetype === 'application/json') {
+      if (req.file.originalname.toLowerCase().endsWith('.json') || req.file.mimetype === 'application/json') {
         const parsed = JSON.parse(fileContent.toString('utf-8'));
         records = Array.isArray(parsed) ? parsed : parsed.records || [];
       } else {
         records = parseCsv(fileContent);
       }
 
-      if (req.body.threshold) {
+      if (req.body.threshold !== undefined && req.body.threshold !== '') {
         const parsedThreshold = Number(req.body.threshold);
-        if (!isNaN(parsedThreshold)) threshold = parsedThreshold;
+        if (!Number.isFinite(parsedThreshold) || parsedThreshold < 0 || parsedThreshold > 1) {
+          throw new AppError('Threshold must be a number between 0 and 1', 400);
+        }
+        threshold = parsedThreshold;
       }
     } else if (req.body && req.body.records) {
       // JSON Body

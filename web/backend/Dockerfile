@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Install build dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm ci
 
 # Copy source code and config
 COPY tsconfig.json ./
@@ -26,7 +26,7 @@ ENV NODE_ENV=production \
 
 # Install production dependencies only
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy compiled JavaScript from builder
 COPY --from=builder /app/dist ./dist

@@ -50,7 +50,7 @@ function AvatarFallback({ className, children, ...props }: AvatarFallbackProps) 
   return (
     <span
       className={cn(
-        'flex h-full w-full items-center justify-center rounded-full bg-gradient-to-tr from-cyan-600 to-purple-600 text-white font-medium',
+        'flex h-full w-full items-center justify-center rounded-full bg-cyan-700 text-white font-medium',
         className
       )}
       {...props}

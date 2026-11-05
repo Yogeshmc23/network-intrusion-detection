@@ -1,63 +1,53 @@
 import * as React from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { cn } from '@/lib/utils';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 
 export function MainLayout() {
   const [collapsed, setCollapsed] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const location = useLocation();
+  const menuButton = React.useRef<HTMLButtonElement>(null);
+  const closeMenu = React.useCallback(() => {
+    setMobileOpen(false);
+    window.setTimeout(() => menuButton.current?.focus(), 0);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mobileOpen) return;
+    const drawer = document.querySelector<HTMLElement>('.mobile-sidebar-drawer');
+    drawer?.querySelector<HTMLElement>('a, button')?.focus();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { closeMenu(); return; }
+      if (event.key !== 'Tab' || !drawer) return;
+      const items = Array.from(drawer.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)'));
+      if (!items.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = previousOverflow; };
+  }, [mobileOpen, closeMenu]);
+  React.useEffect(() => { if (mobileOpen) closeMenu(); }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col antialiased selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar collapsed={collapsed} setCollapsed={setCollapsed} />
+    <div className="app-shell min-h-screen bg-background text-foreground flex flex-col antialiased">
+      <div className="hidden lg:block"><Sidebar collapsed={collapsed} setCollapsed={setCollapsed} /></div>
+      {mobileOpen && <button aria-label="Close navigation menu" className="mobile-sidebar-backdrop lg:hidden" onClick={closeMenu} />}
+      <div className={cn('mobile-sidebar-drawer lg:hidden', mobileOpen ? 'mobile-sidebar-open' : '')} aria-hidden={!mobileOpen}>
+        <Sidebar collapsed={false} setCollapsed={closeMenu} onNavigate={closeMenu} />
       </div>
-
-      {/* Mobile Sidebar Overlay */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
-          onClick={() => setMobileOpen(false)}
-        />
-      )}
-      <div
-        className={cn(
-          'fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 lg:hidden',
-          mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        )}
-      >
-        <Sidebar collapsed={false} setCollapsed={() => setMobileOpen(false)} />
-      </div>
-
-      {/* Main Content Area */}
-      <div
-        className={cn(
-          'flex-1 flex flex-col transition-all duration-300 ease-in-out',
-          collapsed ? 'lg:ml-20' : 'lg:ml-72'
-        )}
-      >
-        <Header onToggleMobileSidebar={() => setMobileOpen(!mobileOpen)} />
-
-        <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-            >
-              <Outlet />
-            </motion.div>
-          </AnimatePresence>
+      <div className={cn('flex-1 flex flex-col transition-[margin] duration-200', collapsed ? 'lg:ml-20' : 'lg:ml-72')}>
+        <Header onToggleMobileSidebar={() => setMobileOpen((open) => !open)} menuButtonRef={menuButton} mobileOpen={mobileOpen} />
+        <main id="main-content" tabIndex={-1} className="flex-1 p-4 md:p-7 max-w-[1600px] w-full mx-auto">
+          <AnimatePresence mode="wait"><motion.div key={location.pathname} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}><Outlet /></motion.div></AnimatePresence>
         </main>
-
-        <footer className="border-t border-white/5 py-4 px-8 text-center text-xs text-slate-400 flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>CyberShield IDS v1.0.0 • NSL-KDD Defense Intelligence Platform</span>
-          <span className="font-mono text-slate-400">Target Recall: 99.5% met • 41 Network Features</span>
-        </footer>
+        <footer className="app-footer"><span>CyberShield IDS · NSL-KDD research/demo platform</span><span>Evaluation figures are offline benchmarks, not live detection rates.</span></footer>
       </div>
     </div>
   );

@@ -70,10 +70,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-950">
+    <div id="main-content" tabIndex={-1} className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-950">
       {/* Background ambient glowing orbs */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
       {/* Decorative grid pattern */}
       <div
@@ -92,7 +90,7 @@ export default function Login() {
       >
         <Card className="border-white/10 bg-slate-900/80 shadow-2xl backdrop-blur-2xl">
           <CardHeader className="text-center pb-4">
-            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-600 via-cyan-500 to-purple-600 shadow-lg shadow-cyan-500/30">
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500 shadow-lg shadow-cyan-500/30">
               <Shield className="h-7 w-7 text-slate-950 font-black" />
             </div>
             <CardTitle className="justify-center text-2xl font-bold tracking-tight text-white">
@@ -106,42 +104,51 @@ export default function Login() {
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-slate-300">Work Email</label>
+                <label htmlFor="login-email" className="text-xs font-medium text-slate-300">Work Email</label>
                 <Input
+                  id="login-email"
                   type="email"
+                  autoComplete="username"
+                  aria-invalid={Boolean(errors.email)}
+                  aria-describedby={errors.email ? 'login-email-error' : undefined}
                   placeholder="analyst@cybershield.io"
                   icon={<Mail className="h-4 w-4" />}
                   {...register('email')}
                 />
                 {errors.email && (
-                  <p className="text-xs text-red-400">{errors.email.message}</p>
+                  <p id="login-email-error" role="alert" className="text-xs text-red-400">{errors.email.message}</p>
                 )}
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-medium text-slate-300">Password</label>
-                  <a href="#forgot" className="text-[11px] text-cyan-400 hover:underline">
-                    Forgot password?
-                  </a>
+                  <label htmlFor="login-password" className="text-xs font-medium text-slate-300">Password</label>
+                  <span className="text-[11px] text-slate-400" title="Password reset is not available in this project">Password reset unavailable</span>
                 </div>
                 <div className="relative">
                   <Input
+                    id="login-password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••••••"
+                    autoComplete="current-password"
+                    aria-invalid={Boolean(errors.password)}
+                    aria-describedby={errors.password ? 'login-password-error' : undefined}
+                    className="pr-11"
+                    placeholder="Enter your password"
                     icon={<Lock className="h-4 w-4" />}
                     {...register('password')}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                    className="password-toggle"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 {errors.password && (
-                  <p className="text-xs text-red-400">{errors.password.message}</p>
+                  <p id="login-password-error" role="alert" className="text-xs text-red-400">{errors.password.message}</p>
                 )}
               </div>
 

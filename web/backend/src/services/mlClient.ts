@@ -65,30 +65,33 @@ export class MLClient {
       const data = response.data;
 
       // Normalize response fields across possible FastAPI formats
-      const rawScore = typeof data.score === 'number' ? data.score : (data.confidence ?? data.probability ?? 0.5);
-      const activeThreshold = typeof data.threshold === 'number' ? data.threshold : (threshold ?? 0.5);
-      
-      let isAnomaly = false;
-      if (typeof data.isAnomaly === 'boolean') {
-        isAnomaly = data.isAnomaly;
-      } else if (typeof data.prediction === 'string') {
-        isAnomaly = data.prediction.toLowerCase() === 'anomaly' || data.prediction === '1';
-      } else if (typeof data.prediction === 'number') {
-        isAnomaly = data.prediction === 1;
-      } else {
-        isAnomaly = rawScore >= activeThreshold;
-      }
+      const rawValue = data.anomaly_score ?? data.score ?? data.probability;
+      const rawScore = Number(rawValue);
+      if (!Number.isFinite(rawScore)) throw new Error('ML service returned no finite anomaly score');
+      const activeThreshold = Number(data.threshold ?? threshold);
+      if (!Number.isFinite(activeThreshold)) throw new Error('ML service returned no decision threshold');
 
-      const predictionLabel = isAnomaly ? 'anomaly' : 'normal';
+      let isAnomaly = false;
+      if (typeof data.is_anomaly === 'boolean') isAnomaly = data.is_anomaly;
+      else if (typeof data.isAnomaly === 'boolean') isAnomaly = data.isAnomaly;
+      else if (typeof data.prediction === 'string') isAnomaly = data.prediction.toLowerCase() === 'anomaly' || data.prediction === '1';
+      else if (typeof data.prediction === 'number') isAnomaly = data.prediction === 1;
+      else isAnomaly = rawScore >= activeThreshold;
+
+      const providedConfidence = Number(data.confidence);
+      const confidence = Number.isFinite(providedConfidence)
+        ? providedConfidence
+        : (rawScore < 0 || rawScore > 1
+          ? 1 / (1 + Math.exp(-Math.abs(rawScore)))
+          : (isAnomaly ? rawScore : 1 - rawScore));
 
       return {
-        prediction: predictionLabel,
-        confidence: Number(rawScore.toFixed(5)),
+        prediction: isAnomaly ? 'anomaly' : 'normal',
+        confidence: Number(confidence.toFixed(5)),
         threshold: activeThreshold,
-        modelUsed: data.modelUsed || data.model_name || 'LightGBM (optional)',
+        modelUsed: data.modelUsed || data.model_name || 'Unknown model',
         isAnomaly,
         rawScore,
-        details: data,
       };
     } catch (error: any) {
       logger.error('ML service predict error:', error?.response?.data || error.message);
@@ -101,10 +104,8 @@ export class MLClient {
    */
   async predictBatch(records: Array<Record<string, any>>, threshold?: number): Promise<BatchPredictionResult> {
     try {
-      const payload = {
-        records,
-        threshold: threshold ?? 0.5,
-      };
+      const payload: { records: Array<Record<string, any>>; threshold?: number } = { records };
+      if (typeof threshold === 'number') payload.threshold = threshold;
 
       const response = await this.client.post('/api/predict-batch', payload);
       const data = response.data;
@@ -113,16 +114,28 @@ export class MLClient {
       if (Array.isArray(data)) {
         let anomalyCount = 0;
         const normalized = data.map((item: any) => {
-          const score = typeof item.score === 'number' ? item.score : (item.confidence ?? 0.5);
-          const itemThreshold = item.threshold ?? threshold ?? 0.5;
-          const isAnomaly = item.prediction === 'anomaly' || item.isAnomaly === true || score >= itemThreshold;
+          const rawScore = Number(item.anomaly_score ?? item.score ?? item.probability);
+          if (!Number.isFinite(rawScore)) throw new Error('ML service returned a non-finite batch score');
+          const itemThreshold = Number(item.threshold ?? threshold);
+          if (!Number.isFinite(itemThreshold)) throw new Error('ML service returned no batch decision threshold');
+          const labelIsAnomaly = item.prediction === 'anomaly' || item.prediction === 1;
+          const isAnomaly = typeof item.is_anomaly === 'boolean'
+            ? item.is_anomaly
+            : (typeof item.isAnomaly === 'boolean' ? item.isAnomaly : (labelIsAnomaly || rawScore >= itemThreshold));
           if (isAnomaly) anomalyCount++;
+          const suppliedConfidence = Number(item.confidence);
+          const confidence = Number.isFinite(suppliedConfidence)
+            ? suppliedConfidence
+            : (rawScore < 0 || rawScore > 1
+              ? 1 / (1 + Math.exp(-Math.abs(rawScore)))
+              : (isAnomaly ? rawScore : 1 - rawScore));
           return {
             prediction: isAnomaly ? 'anomaly' : 'normal',
-            confidence: Number(score.toFixed(5)),
+            confidence: Number(confidence.toFixed(5)),
             threshold: itemThreshold,
-            modelUsed: item.modelUsed || item.model_name || 'LightGBM (optional)',
+            modelUsed: item.modelUsed || item.model_name || 'Unknown model',
             isAnomaly,
+            rawScore,
           };
         });
 
@@ -135,17 +148,37 @@ export class MLClient {
       }
 
       if (data.predictions && Array.isArray(data.predictions)) {
+        const normalized = data.predictions.map((p: any) => {
+          const rawScore = Number(p.anomaly_score ?? p.score ?? p.probability);
+          if (!Number.isFinite(rawScore)) throw new Error('ML service returned a non-finite batch score');
+          const itemThreshold = Number(p.threshold ?? threshold);
+          if (!Number.isFinite(itemThreshold)) throw new Error('ML service returned no batch decision threshold');
+          const isAnomaly = typeof p.is_anomaly === 'boolean'
+            ? p.is_anomaly
+            : (typeof p.isAnomaly === 'boolean'
+              ? p.isAnomaly
+              : (p.prediction === 'anomaly' || p.prediction === 1 || rawScore >= itemThreshold));
+          const suppliedConfidence = Number(p.confidence);
+          const confidence = Number.isFinite(suppliedConfidence)
+            ? suppliedConfidence
+            : (rawScore < 0 || rawScore > 1
+              ? 1 / (1 + Math.exp(-Math.abs(rawScore)))
+              : (isAnomaly ? rawScore : 1 - rawScore));
+          return {
+            prediction: isAnomaly ? 'anomaly' : 'normal',
+            confidence: Number(confidence.toFixed(5)),
+            threshold: itemThreshold,
+            modelUsed: p.modelUsed || p.model_name || 'Unknown model',
+            isAnomaly,
+            rawScore,
+          };
+        });
+        const anomalyCount = normalized.filter((item: PredictionResult) => item.isAnomaly).length;
         return {
-          total: data.total ?? data.predictions.length,
-          anomalyCount: data.anomalyCount ?? data.predictions.filter((p: any) => p.isAnomaly || p.prediction === 'anomaly').length,
-          normalCount: data.normalCount ?? data.predictions.filter((p: any) => !p.isAnomaly && p.prediction !== 'anomaly').length,
-          predictions: data.predictions.map((p: any) => ({
-            prediction: p.prediction === 'anomaly' || p.isAnomaly ? 'anomaly' : 'normal',
-            confidence: typeof p.confidence === 'number' ? p.confidence : (p.score ?? 0.5),
-            threshold: p.threshold ?? threshold ?? 0.5,
-            modelUsed: p.modelUsed || 'LightGBM (optional)',
-            isAnomaly: p.prediction === 'anomaly' || p.isAnomaly === true,
-          })),
+          total: data.total ?? normalized.length,
+          anomalyCount: data.anomalyCount ?? anomalyCount,
+          normalCount: data.normalCount ?? normalized.length - anomalyCount,
+          predictions: normalized,
         };
       }
 

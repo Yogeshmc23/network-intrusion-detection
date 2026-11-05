@@ -143,9 +143,10 @@ async function bootstrap(): Promise<void> {
 
     if (env.usesInsecureJwtSecrets) {
       logger.warn(
-        'SECURITY: JWT secrets are missing, identical or still set to the shipped defaults. ' +
-          'Set unique JWT_SECRET and JWT_REFRESH_SECRET values before exposing this service.'
+        'SECURITY: JWT secrets are missing, too short, identical or still set to the shipped defaults. ' +
+          'Set distinct random values of at least 32 characters before exposing this service.'
       );
+      if (env.isProd) throw new Error('Refusing to start in production with insecure JWT secret configuration.');
     }
 
     // 1. Connect to MongoDB

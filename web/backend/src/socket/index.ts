@@ -34,12 +34,11 @@ export function initSocket(server: HttpServer): Server {
     socket.emit('status', liveStreamService.getStatus());
 
     // Handle "start-stream" event
-    socket.on('start-stream', (options?: { speed?: number; threshold?: number }) => {
-      logger.info(`Client ${socket.id} requested start-stream with options:`, options);
-      if (liveNamespace) {
-        const status = liveStreamService.start(liveNamespace, options);
-        liveNamespace.emit('status', status);
-      }
+    socket.on('start-stream', () => {
+      socket.emit('stream-unavailable', {
+        code: 'LIVE_SOURCE_UNAVAILABLE',
+        message: 'No live packet-capture or event source is configured.',
+      });
     });
 
     // Handle "stop-stream" event

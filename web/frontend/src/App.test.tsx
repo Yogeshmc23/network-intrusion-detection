@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from '@/App';
@@ -27,6 +27,8 @@ describe('App routing', () => {
   beforeEach(() => {
     resetSessionBootstrap();
     localStorage.clear();
+    sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
     useAuthStore.setState({
       user: null,
       accessToken: null,
@@ -42,5 +44,21 @@ describe('App routing', () => {
 
     expect(await screen.findByText(/sign in to terminal/i)).toBeInTheDocument();
     expect(screen.queryByText(/threat operations dashboard/i)).not.toBeInTheDocument();
+  });
+
+  it('stores allow-listed campaign parameters only after optional analytics consent', async () => {
+    window.history.replaceState({}, '', '/login?utm_source=partner&utm_campaign=fall-briefing');
+    renderApp('/login');
+
+    expect(sessionStorage.getItem('cybershield_utm')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+    expect(JSON.parse(sessionStorage.getItem('cybershield_utm') ?? '{}')).toEqual({
+      utm_source: 'partner',
+      utm_campaign: 'fall-briefing',
+    });
+
+    act(() => window.dispatchEvent(new CustomEvent('cybershield:cookie-settings')));
+    fireEvent.click(screen.getByRole('button', { name: 'Reject optional' }));
+    expect(sessionStorage.getItem('cybershield_utm')).toBeNull();
   });
 });

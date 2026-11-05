@@ -10,7 +10,12 @@ vi.mock('../models/User', () => ({
   },
 }));
 
+vi.mock('../models/RevokedRefreshToken', () => ({
+  default: { exists: vi.fn(), updateOne: vi.fn() },
+}));
+
 import User from '../models/User';
+import RevokedRefreshToken from '../models/RevokedRefreshToken';
 import env from '../config/env';
 import { authRouter } from './auth';
 import { errorHandler } from '../middleware/errorHandler';
@@ -50,6 +55,8 @@ function userDocument() {
 describe('POST /api/auth/refresh', () => {
   beforeEach(() => {
     findById.mockReset();
+    vi.mocked(RevokedRefreshToken.exists).mockReset().mockResolvedValue(null);
+    vi.mocked(RevokedRefreshToken.updateOne).mockReset().mockResolvedValue({ upsertedCount: 1 } as never);
   });
 
   it('exchanges a valid refresh token for a new access/refresh pair', async () => {
@@ -76,6 +83,20 @@ describe('POST /api/auth/refresh', () => {
     expect(response.body.success).toBe(false);
     expect(response.body.code).toBe('REFRESH_TOKEN_INVALID');
     expect(findById).not.toHaveBeenCalled();
+  });
+
+  it('rejects replay of a refresh token that was already rotated', async () => {
+    const refreshToken = generateRefreshToken(payload);
+    findById.mockResolvedValue(userDocument() as never);
+
+    const first = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(first.status).toBe(200);
+    expect(RevokedRefreshToken.updateOne).toHaveBeenCalledOnce();
+
+    vi.mocked(RevokedRefreshToken.exists).mockResolvedValue({ _id: 'revoked' } as never);
+    const replay = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(replay.status).toBe(401);
+    expect(replay.body.code).toBe('REFRESH_TOKEN_REVOKED');
   });
 
   it('rejects a malformed refresh token', async () => {
@@ -114,6 +135,27 @@ describe('POST /api/auth/refresh', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.success).toBe(false);
+  });
+});
+
+describe('POST /api/auth/logout', () => {
+  beforeEach(() => {
+    vi.mocked(RevokedRefreshToken.updateOne).mockReset().mockResolvedValue({ upsertedCount: 1 } as never);
+  });
+
+  it('revokes a valid refresh token and returns an idempotent success response', async () => {
+    const refreshToken = generateRefreshToken(payload);
+    const response = await request(app).post('/api/auth/logout').send({ refreshToken });
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(RevokedRefreshToken.updateOne).toHaveBeenCalledOnce();
+  });
+
+  it('accepts logout for an expired token without attempting to persist it', async () => {
+    const expiredToken = jwt.sign({ ...payload, typ: 'refresh' }, env.JWT_REFRESH_SECRET, { expiresIn: -10 });
+    const response = await request(app).post('/api/auth/logout').send({ refreshToken: expiredToken });
+    expect(response.status).toBe(200);
+    expect(RevokedRefreshToken.updateOne).not.toHaveBeenCalled();
   });
 });
 

@@ -2,6 +2,8 @@ import * as React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/authStore';
+import { authApi } from '@/lib/api';
+import { useToast } from '@/components/ui/toast';
 import { useModelStore } from '@/stores/modelStore';
 import {
   Shield,
@@ -15,20 +17,23 @@ import {
   ChevronRight,
   ShieldAlert,
   Server,
-  Zap,
 } from 'lucide-react';
+
+interface NavItem { name: string; path: string; icon: React.ComponentType<{ className?: string }>; badge?: string; badgeColor?: string }
 
 interface SidebarProps {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
+  onNavigate?: () => void;
 }
 
-export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
+export function Sidebar({ collapsed, setCollapsed, onNavigate }: SidebarProps) {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user, logout, refreshToken } = useAuthStore();
+  const { toast } = useToast();
   const { selectedModel } = useModelStore();
 
-  const navItems = [
+  const navItems: NavItem[] = [
     {
       name: 'Dashboard',
       path: '/dashboard',
@@ -45,14 +50,13 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       name: 'Models',
       path: '/models',
       icon: Cpu,
-      badge: '99.7%',
+      badge: undefined,
     },
     {
       name: 'Live Monitor',
       path: '/live',
       icon: Activity,
-      badge: 'Live',
-      badgeColor: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      badge: undefined,
     },
     {
       name: 'History',
@@ -69,6 +73,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   ];
 
   const handleLogout = () => {
+    if (refreshToken) void authApi.logout(refreshToken).catch(() => toast({ title: 'Signed out on this device', description: 'The server could not revoke this refresh token; it remains usable until it expires.', variant: 'warning' }));
     logout();
     navigate('/login');
   };
@@ -84,7 +89,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
       <div className="flex flex-col">
         <div className="flex items-center justify-between h-18 px-4 py-4 border-b border-white/5">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-600 via-cyan-500 to-purple-600 shadow-lg shadow-cyan-500/25">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500 shadow-lg shadow-cyan-500/25">
               <Shield className="h-5 w-5 text-slate-950 font-bold" />
             </div>
             {!collapsed && (
@@ -131,11 +136,12 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={onNavigate}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all group relative',
                     isActive
-                      ? 'bg-gradient-to-r from-cyan-500/15 to-purple-500/10 text-cyan-300 border border-cyan-500/30 shadow-[0_0_20px_rgba(6,182,212,0.15)] font-semibold'
+                      ? 'bg-cyan-950/70 text-cyan-300 border border-cyan-700/60 font-semibold'
                       : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/40 border border-transparent'
                   )
                 }
@@ -181,7 +187,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
           )}
         >
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-cyan-600 to-purple-600 text-white font-semibold text-xs shadow-md">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cyan-700 text-white font-semibold text-xs shadow-md">
               {user?.name ? user.name.slice(0, 2).toUpperCase() : 'CY'}
             </div>
             {!collapsed && (
@@ -190,7 +196,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
                   {user?.name || 'Security Analyst'}
                 </span>
                 <span className="text-[11px] text-slate-400 truncate">
-                  {user?.email || 'analyst@cybershield.io'}
+                  {user?.email || ''}
                 </span>
               </div>
             )}
@@ -198,9 +204,11 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
 
           {!collapsed && (
             <button
+              type="button"
               onClick={handleLogout}
               className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-              title="Logout"
+              title="Sign out"
+              aria-label="Sign out"
             >
               <LogOut className="h-4 w-4" />
             </button>

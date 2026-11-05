@@ -23,7 +23,16 @@ interface ModelStoreState {
   toggleTheme: () => void;
 }
 
-const initialTheme = (localStorage.getItem('cybershield_theme') as 'dark' | 'light') || 'dark';
+function readTheme(): 'dark' | 'light' {
+  try {
+    const saved = window.localStorage.getItem('cybershield_theme');
+    return saved === 'light' ? 'light' : 'dark';
+  } catch { return 'dark'; }
+}
+function persistTheme(theme: 'dark' | 'light') {
+  try { window.localStorage.setItem('cybershield_theme', theme); } catch { /* theme still changes for this page */ }
+}
+const initialTheme = readTheme();
 if (typeof document !== 'undefined') {
   if (initialTheme === 'dark') {
     document.documentElement.classList.add('dark');
@@ -45,7 +54,7 @@ export const useModelStore = create<ModelStoreState>((set) => ({
   toggleOperationalMode: () => set((state) => ({ isOperationalMode: !state.isOperationalMode })),
 
   setTheme: (theme: 'dark' | 'light') => {
-    localStorage.setItem('cybershield_theme', theme);
+    persistTheme(theme);
     if (typeof document !== 'undefined') {
       if (theme === 'dark') {
         document.documentElement.classList.add('dark');
@@ -61,7 +70,7 @@ export const useModelStore = create<ModelStoreState>((set) => ({
   toggleTheme: () => {
     set((state) => {
       const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
-      localStorage.setItem('cybershield_theme', nextTheme);
+      persistTheme(nextTheme);
       if (typeof document !== 'undefined') {
         if (nextTheme === 'dark') {
           document.documentElement.classList.add('dark');

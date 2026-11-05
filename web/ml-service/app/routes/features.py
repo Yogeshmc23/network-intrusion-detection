@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter
@@ -45,6 +46,14 @@ async def get_model_metadata() -> ModelMetadataResponse:
         numeric_columns=metadata.get("numeric_columns", []),
         categorical_options=metadata.get("categorical_options", {}),
         demo_samples=metadata.get("demo_samples", {}),
+        artifact_updated_at=(
+            datetime.fromtimestamp(
+                (model_loader.results_dir / metadata.get("artifact", "ids_model.joblib")).stat().st_mtime,
+                tz=timezone.utc,
+            ).isoformat()
+            if (model_loader.results_dir / metadata.get("artifact", "ids_model.joblib")).is_file()
+            else None
+        ),
     )
 
 

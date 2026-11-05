@@ -18,25 +18,6 @@ export interface FeatureImportanceItem {
   description?: string;
 }
 
-const defaultFeatures: FeatureImportanceItem[] = [
-  { feature: 'src_bytes', importance: 0.287999, category: 'basic', description: 'Number of bytes from source to destination' },
-  { feature: 'service', importance: 0.027485, category: 'basic', description: 'Network service on destination (e.g., http, ftp)' },
-  { feature: 'hot', importance: 0.006700, category: 'content', description: 'Number of hot indicators (system file access, etc.)' },
-  { feature: 'dst_host_same_src_port_rate', importance: 0.005558, category: 'host', description: '% of connections to same src port on dst host' },
-  { feature: 'dst_bytes', importance: 0.003243, category: 'basic', description: 'Number of bytes from destination to source' },
-  { feature: 'dst_host_same_srv_rate', importance: 0.002390, category: 'host', description: '% of connections to same service on dst host' },
-  { feature: 'dst_host_serror_rate', importance: 0.001982, category: 'host', description: '% of connections with SYN error on dst host' },
-  { feature: 'count', importance: 0.001546, category: 'traffic', description: 'Connections to same host as current in past 2s' },
-  { feature: 'duration', importance: 0.001132, category: 'basic', description: 'Length of connection in seconds' },
-  { feature: 'dst_host_srv_diff_host_rate', importance: 0.000851, category: 'host', description: '% of diff hosts for service on dst host' },
-  { feature: 'same_srv_rate', importance: 0.000706, category: 'traffic', description: '% of connections to the same service' },
-  { feature: 'dst_host_srv_serror_rate', importance: 0.000704, category: 'host', description: '% of connections to same service with SYN error' },
-  { feature: 'dst_host_diff_srv_rate', importance: 0.000567, category: 'host', description: '% of connections to diff services on dst host' },
-  { feature: 'dst_host_srv_count', importance: 0.000285, category: 'host', description: 'Connections to same service on dst host in past 2s' },
-  { feature: 'protocol_type', importance: 0.000280, category: 'basic', description: 'Transport layer protocol (tcp, udp, icmp)' },
-  { feature: 'flag', importance: 0.000141, category: 'basic', description: 'Normal or error connection state flag' },
-];
-
 interface FeatureImportanceChartProps {
   data?: FeatureImportanceItem[];
   onSelectFeature?: (feature: FeatureImportanceItem) => void;
@@ -45,7 +26,7 @@ interface FeatureImportanceChartProps {
 }
 
 export function FeatureImportanceChart({
-  data = defaultFeatures,
+  data = [],
   onSelectFeature,
   className,
   limit = 15,
@@ -54,11 +35,13 @@ export function FeatureImportanceChart({
     .sort((a, b) => b.importance - a.importance)
     .slice(0, limit);
 
+  if (!chartData.length) return <p className={cn('py-8 text-center text-sm text-slate-400', className)}>Feature importance is not available.</p>;
+
   const getBarColor = (index: number) => {
     if (index === 0) return '#06b6d4'; // highest is cyan
     if (index < 3) return '#38bdf8';
-    if (index < 7) return '#818cf8';
-    return '#8b5cf6'; // purple gradient towards bottom
+    if (index < 7) return '#0e7490';
+    return '#475569';
   };
 
   return (
@@ -108,7 +91,7 @@ export function FeatureImportanceChart({
                         </p>
                       )}
                       {item.category && (
-                        <span className="mt-2 inline-block text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-purple-300 border border-purple-500/20">
+                        <span className="mt-2 inline-block text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-cyan-300 border border-cyan-500/20">
                           {item.category} feature
                         </span>
                       )}
