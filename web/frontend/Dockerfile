@@ -4,8 +4,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies first for better caching
-COPY package.json ./
-RUN npm install
+COPY package*.json ./
+RUN npm ci
 
 # Copy source code and build
 COPY . .

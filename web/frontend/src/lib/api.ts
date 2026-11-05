@@ -206,6 +206,8 @@ export interface ModelMetadata {
   categorical_columns: string[];
   numeric_columns: string[];
   categorical_options: Record<string, string[]>;
+  artifact_updated_at?: string | null;
+  demo_samples?: Record<string, Record<string, unknown>>;
 }
 
 export interface HistoryItem {
@@ -271,31 +273,51 @@ export const authApi = {
     }>('/auth/refresh', { refreshToken });
     return res.data;
   },
+
+  logout: async (refreshToken: string) => {
+    const res = await authRefreshClient.post<{ success: boolean }>('/auth/logout', { refreshToken });
+    return res.data;
+  },
 };
 
 export const predictApi = {
-  predictSingle: async (features: Record<string, any>, model?: string) => {
-    const res = await apiClient.post<PredictionResult>('/predict', {
-      features,
-      model,
-    });
-    return res.data;
+  predictSingle: async (features: Record<string, any>, threshold?: number) => {
+    const res = await apiClient.post<any>('/predict', { features, threshold });
+    const raw = res.data?.data ?? res.data;
+    const prediction = raw.prediction === 'anomaly' || raw.isAnomaly || raw.is_anomaly ? 'anomaly' : 'normal';
+    return {
+      ...raw,
+      id: raw.id ?? raw.predictionId,
+      prediction,
+      is_anomaly: raw.is_anomaly ?? raw.isAnomaly ?? prediction === 'anomaly',
+      model_name: raw.model_name ?? raw.modelUsed,
+      timestamp: raw.timestamp ?? raw.createdAt,
+      anomaly_score: raw.anomaly_score ?? raw.rawScore,
+    } as PredictionResult;
   },
 
-  predictBatch: async (file: File, model?: string) => {
+  predictBatch: async (file: File, threshold?: number) => {
     const formData = new FormData();
     formData.append('file', file);
-    if (model) formData.append('model', model);
+    if (threshold !== undefined) formData.append('threshold', String(threshold));
 
-    const res = await apiClient.post<{
-      predictions: PredictionResult[];
-      summary: { total: number; normal: number; anomaly: number };
-    }>('/predict-batch', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+    const res = await apiClient.post<any>('/predict-batch', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return res.data;
+    const raw = res.data?.data ?? res.data;
+    const predictions = Array.isArray(raw.predictions) ? raw.predictions.map((item: any) => ({
+      ...item,
+      id: item.id ?? item.predictionId,
+      prediction: item.prediction === 'anomaly' || item.isAnomaly || item.is_anomaly ? 'anomaly' : 'normal',
+      is_anomaly: item.is_anomaly ?? item.isAnomaly ?? item.prediction === 'anomaly',
+      model_name: item.model_name ?? item.modelUsed,
+      timestamp: item.timestamp ?? item.createdAt,
+      anomaly_score: item.anomaly_score ?? item.rawScore,
+    })) : [];
+    return {
+      predictions,
+      summary: raw.summary ?? { total: raw.total ?? predictions.length, anomaly: raw.anomalyCount ?? 0, normal: raw.normalCount ?? 0 },
+    };
   },
 };
 
@@ -307,14 +329,34 @@ export const historyApi = {
     search?: string;
     startDate?: string;
     endDate?: string;
-  }) => {
-    const res = await apiClient.get<HistoryResponse>('/history', { params });
-    return res.data;
+  }): Promise<HistoryResponse> => {
+    const { startDate, endDate, ...rest } = params ?? {};
+    const res = await apiClient.get<any>('/history', { params: { ...rest, dateFrom: startDate, dateTo: endDate } });
+    const outer = res.data;
+    const raw = Array.isArray(outer?.data) ? outer : (outer?.data ?? outer);
+    const items = Array.isArray(outer?.data) ? outer.data : (raw.predictions ?? raw.data ?? []);
+    const pagination = outer?.pagination ?? raw.pagination ?? {};
+    return {
+      predictions: items.map((item: any) => ({
+        ...item,
+        _id: item._id ?? item.id,
+        id: item.id ?? item._id,
+        timestamp: item.timestamp ?? item.createdAt,
+        features: item.features ?? item.inputFeatures ?? {},
+        model_name: item.model_name ?? item.modelUsed,
+        is_anomaly: item.is_anomaly ?? item.isAnomaly ?? item.prediction === 'anomaly',
+      })),
+      total: raw.total ?? pagination.total ?? 0,
+      page: raw.page ?? pagination.page ?? 1,
+      pages: raw.pages ?? pagination.totalPages ?? 1,
+      limit: raw.limit ?? pagination.limit,
+    } as HistoryResponse;
   },
 
-  getStats: async () => {
-    const res = await apiClient.get<HistoryStats>('/history/stats');
-    return res.data;
+  getStats: async (): Promise<HistoryStats> => {
+    const res = await apiClient.get<any>('/history/stats');
+    const raw = res.data?.stats ?? res.data?.data ?? res.data;
+    return { ...raw, total: Number(raw.total ?? 0), anomalyCount: Number(raw.anomalyCount ?? 0), normalCount: Number(raw.normalCount ?? 0), detectionRate: raw.detectionRate ?? raw.anomalyRate } as HistoryStats;
   },
 
   exportCsv: async () => {
@@ -327,30 +369,26 @@ export const historyApi = {
 
 export const modelsApi = {
   getMetrics: async () => {
-    const res = await apiClient.get<{ models: ModelMetricItem[] }>('/models/metrics');
-    return res.data;
+    const res = await apiClient.get<any>('/models/metrics');
+    const raw = res.data?.data ?? res.data;
+    return { models: (raw.models ?? raw.metrics ?? []) as ModelMetricItem[] };
   },
 
   getComparison: async () => {
-    const res = await apiClient.get<{
-      paper_baselines: ModelMetricItem[];
-      improved_models: ModelMetricItem[];
-      best_model?: string;
-      reference_rf_holdout?: ModelMetricItem;
-    }>('/models/comparison');
-    return res.data;
+    const res = await apiClient.get<any>('/models/comparison');
+    return res.data?.data ?? res.data;
   },
 
   getMetadata: async () => {
-    const res = await apiClient.get<ModelMetadata>('/models/metadata');
-    return res.data;
+    const res = await apiClient.get<any>('/models/metadata');
+    return (res.data?.data ?? res.data) as ModelMetadata;
   },
 
   getFeatureImportance: async () => {
-    const res = await apiClient.get<{
-      importance: Record<string, number>;
-      sorted?: Array<{ feature: string; importance: number; description?: string }>;
-    }>('/models/feature-importance');
-    return res.data;
+    const res = await apiClient.get<any>('/models/feature-importance');
+    const raw = res.data?.data ?? res.data;
+    const sorted = raw.sorted ?? raw.features ?? [];
+    return { ...raw, sorted: Array.isArray(sorted) ? sorted : Object.entries(raw.importance ?? {}).map(([feature, importance]) => ({ feature, importance })) };
+
   },
 };

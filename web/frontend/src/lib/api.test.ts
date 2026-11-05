@@ -236,6 +236,20 @@ describe('api auth interceptors', () => {
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
   });
 
+  it('requests server-side refresh-token revocation during logout', async () => {
+    let requestUrl = '';
+    let requestBody: any;
+    installAdapter(authRefreshClient, (config) => {
+      requestUrl = config.url ?? '';
+      requestBody = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
+      return { status: 200, data: { success: true } };
+    });
+
+    await expect(authApi.logout('refresh-token-1')).resolves.toEqual({ success: true });
+    expect(requestUrl).toBe('/auth/logout');
+    expect(requestBody.refreshToken).toBe('refresh-token-1');
+  });
+
   it('sends the current access token on authenticated requests', async () => {
     let received: string | undefined;
 

@@ -1,6 +1,5 @@
 import { Namespace } from 'socket.io';
-import mlClient, { PredictionResult } from './mlClient';
-import logger from '../utils/logger';
+import mlClient from './mlClient';
 
 export const NSL_KDD_FEATURES = [
   'duration',
@@ -77,23 +76,11 @@ export interface LiveStreamOptions {
 }
 
 export interface StreamStatus {
+  sourceConfigured: boolean;
   isRunning: boolean;
-  speed: number;
-  threshold: number;
-  recordsEmitted: number;
-  alertsEmitted: number;
-  startedAt: Date | null;
 }
 
 export class LiveStreamService {
-  private timer: NodeJS.Timeout | null = null;
-  private isRunning: boolean = false;
-  private speed: number = 1; // default 1 record per second
-  private threshold: number = 0.5;
-  private recordsEmitted: number = 0;
-  private alertsEmitted: number = 0;
-  private startedAt: Date | null = null;
-  private ioNamespace: Namespace | null = null;
 
   /**
    * Helper to pick a random item from array
@@ -366,147 +353,19 @@ export class LiveStreamService {
   }
 
   /**
-   * Fallback heuristic scoring if ML service is offline
+   * Synthetic vectors are available only through the explicit sample endpoint.
+   * They are never emitted as live traffic or counted as detection activity.
    */
-  private heuristicClassify(record: Record<string, any>, threshold = 0.5): PredictionResult {
-    let score = 0.05;
-
-    // SYN flood indicators
-    if (record.flag === 'S0' && record.serror_rate > 0.5) score += 0.85;
-    if (record.count > 100 && record.srv_serror_rate > 0.5) score += 0.4;
-    // Port sweep indicators
-    if (record.diff_srv_rate > 0.7 && record.rerror_rate > 0.5) score += 0.8;
-    // Bruteforce / root shell indicators
-    if (record.num_failed_logins > 0) score += 0.65;
-    if (record.root_shell === 1 || record.su_attempted > 0) score += 0.9;
-    if (record.hot > 2) score += 0.3;
-
-    score = Math.min(Math.max(score, 0.01), 0.99);
-    const isAnomaly = score >= threshold;
-
-    return {
-      prediction: isAnomaly ? 'anomaly' : 'normal',
-      confidence: Number(score.toFixed(4)),
-      threshold,
-      modelUsed: 'IDS-Heuristic-Fallback',
-      isAnomaly,
-      rawScore: score,
-    };
-  }
-
-  /**
-   * Tick handler: generates record, classifies, and broadcasts to Socket.IO namespace
-   */
-  private async processTick(): Promise<void> {
-    if (!this.ioNamespace) return;
-
-    try {
-      const record = this.generateRecord();
-      let predictionResult: PredictionResult;
-
-      try {
-        predictionResult = await mlClient.predict(record, this.threshold);
-      } catch (err) {
-        // Fallback to local heuristic classifier so live demo keeps streaming
-        predictionResult = this.heuristicClassify(record, this.threshold);
-      }
-
-      this.recordsEmitted++;
-      const timestamp = new Date().toISOString();
-
-      const predictionPayload = {
-        id: `stream-${Date.now()}-${this.recordsEmitted}`,
-        timestamp,
-        features: record,
-        prediction: predictionResult.prediction,
-        confidence: predictionResult.confidence,
-        threshold: predictionResult.threshold,
-        modelUsed: predictionResult.modelUsed,
-        isAnomaly: predictionResult.isAnomaly,
-      };
-
-      // Broadcast 'prediction' event to all connected live listeners
-      this.ioNamespace.emit('prediction', predictionPayload);
-
-      // If anomaly detected, broadcast high-priority 'alert' event
-      if (predictionResult.isAnomaly || predictionResult.prediction === 'anomaly') {
-        this.alertsEmitted++;
-        const alertLevel = predictionResult.confidence >= 0.85 ? 'CRITICAL' : 'WARNING';
-        
-        let threatType = 'Suspicious Traffic Pattern';
-        if (record.flag === 'S0' && record.serror_rate > 0.5) threatType = 'DoS SYN Flood Attack';
-        else if (record.diff_srv_rate > 0.5) threatType = 'Port Scanning / Probe';
-        else if (record.num_failed_logins > 0) threatType = 'Brute Force Login Attack';
-        else if (record.root_shell === 1) threatType = 'Privilege Escalation (U2R)';
-
-        this.ioNamespace.emit('alert', {
-          id: `alert-${Date.now()}-${this.alertsEmitted}`,
-          timestamp,
-          level: alertLevel,
-          threatType,
-          message: `${threatType} detected with ${(predictionResult.confidence * 100).toFixed(1)}% confidence`,
-          confidence: predictionResult.confidence,
-          threshold: predictionResult.threshold,
-          sourceProtocol: record.protocol_type,
-          service: record.service,
-          features: record,
-        });
-      }
-    } catch (err: any) {
-      logger.error('Error during live stream tick:', err?.message || err);
-    }
-  }
-
-  /**
-   * Start live simulated streaming
-   */
-  public start(ioNamespace: Namespace, options: LiveStreamOptions = {}): StreamStatus {
-    this.ioNamespace = ioNamespace;
-    this.speed = Math.max(0.5, Math.min(options.speed || 1, 10)); // Clamp between 0.5 and 10 records/sec
-    this.threshold = options.threshold ?? 0.5;
-
-    if (this.isRunning) {
-      // Re-adjust interval
-      if (this.timer) clearInterval(this.timer);
-    } else {
-      this.isRunning = true;
-      this.startedAt = new Date();
-    }
-
-    const intervalMs = Math.round(1000 / this.speed);
-    this.timer = setInterval(() => {
-      this.processTick();
-    }, intervalMs);
-
-    logger.info(`Live stream started at ${this.speed} records/sec (interval: ${intervalMs}ms)`);
+  public start(_ioNamespace: Namespace, _options: LiveStreamOptions = {}): StreamStatus {
     return this.getStatus();
   }
 
-  /**
-   * Stop live simulated streaming
-   */
   public stop(): StreamStatus {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    this.isRunning = false;
-    logger.info(`Live stream stopped. Total records: ${this.recordsEmitted}, Alerts: ${this.alertsEmitted}`);
     return this.getStatus();
   }
 
-  /**
-   * Get current stream status
-   */
   public getStatus(): StreamStatus {
-    return {
-      isRunning: this.isRunning,
-      speed: this.speed,
-      threshold: this.threshold,
-      recordsEmitted: this.recordsEmitted,
-      alertsEmitted: this.alertsEmitted,
-      startedAt: this.startedAt,
-    };
+    return { sourceConfigured: false, isRunning: false };
   }
 }
 

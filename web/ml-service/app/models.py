@@ -207,6 +207,7 @@ class ModelMetadataResponse(BaseModel):
     numeric_columns: list[str]
     categorical_options: dict[str, list[str]]
     demo_samples: dict[str, dict[str, Any]]
+    artifact_updated_at: Optional[str] = Field(default=None, description="UTC filesystem modification time of the loaded model artifact, when available.")
 
 
 # ==============================================================================

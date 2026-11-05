@@ -71,7 +71,7 @@ async def predict_single(request: PredictionRequest) -> PredictionResult:
         logger.error(f"Prediction failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to process connection record: {exc}",
+            detail="Unable to process this connection record. Check the supplied feature values and try again.",
         ) from exc
 
 
@@ -175,5 +175,5 @@ async def predict_batch(
         logger.error(f"Batch prediction failed: {exc}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch prediction failed: {exc}",
+            detail="Batch prediction could not be completed. Check the service logs and try again.",
         ) from exc

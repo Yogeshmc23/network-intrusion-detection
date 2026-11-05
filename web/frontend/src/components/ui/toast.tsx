@@ -44,10 +44,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <ToastContext.Provider value={{ toasts, toast, dismiss }}>
       {children}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none p-4">
+      <div aria-label="Notifications" className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full pointer-events-none p-4">
         {toasts.map((t) => (
           <div
             key={t.id}
+            role={t.variant === 'destructive' ? 'alert' : 'status'}
+            aria-live={t.variant === 'destructive' ? 'assertive' : 'polite'}
             className={cn(
               'pointer-events-auto flex items-start gap-3 p-4 rounded-xl border shadow-2xl backdrop-blur-xl animate-in slide-in-from-bottom-5 duration-300',
               t.variant === 'destructive' &&
@@ -57,7 +59,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               t.variant === 'warning' &&
                 'border-amber-500/30 bg-amber-950/90 text-amber-200 shadow-amber-500/20',
               t.variant === 'info' &&
-                'border-purple-500/30 bg-slate-900/95 text-purple-200 shadow-purple-500/20',
+                'border-cyan-500/30 bg-slate-900/95 text-cyan-200 shadow-cyan-500/20',
               (!t.variant || t.variant === 'default') &&
                 'border-white/10 bg-slate-900/95 text-slate-100'
             )}
@@ -66,7 +68,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               {t.variant === 'destructive' && <AlertCircle className="h-5 w-5 text-red-400" />}
               {t.variant === 'success' && <CheckCircle2 className="h-5 w-5 text-cyan-400" />}
               {t.variant === 'warning' && <AlertTriangle className="h-5 w-5 text-amber-400" />}
-              {t.variant === 'info' && <Info className="h-5 w-5 text-purple-400" />}
+              {t.variant === 'info' && <Info className="h-5 w-5 text-cyan-400" />}
               {(!t.variant || t.variant === 'default') && <Info className="h-5 w-5 text-slate-400" />}
             </div>
             <div className="flex-1 text-sm">

@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 
 const backendProxy = {
+  '/api-docs': {
+    target: 'http://localhost:5000',
+    changeOrigin: true,
+    secure: false,
+  },
   '/api': {
     target: 'http://localhost:5000',
     changeOrigin: true,

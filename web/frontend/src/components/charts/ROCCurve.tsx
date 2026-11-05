@@ -43,7 +43,7 @@ export function ROCCurve({ className }: { className?: string }) {
   const models = [
     { key: 'dt_all', name: 'Decision Tree [All features] (AUC: 0.9972)', color: '#06b6d4' },
     { key: 'svm_all', name: 'SVM (RBF) [All features] (AUC: 0.9981)', color: '#10b981' },
-    { key: 'dt_top30', name: 'Decision Tree [Top-30] (AUC: 0.9899)', color: '#a855f7' },
+    { key: 'dt_top30', name: 'Decision Tree [Top-30] (AUC: 0.9899)', color: '#0e7490' },
     { key: 'nb_top30', name: 'Naive Bayes [Top-30] (AUC: 0.9787)', color: '#f59e0b' },
   ];
 
@@ -170,7 +170,7 @@ export function ROCCurve({ className }: { className?: string }) {
                 type="monotone"
                 dataKey="dt_top30"
                 name="Decision Tree [Top-30]"
-                stroke="#a855f7"
+                stroke="#0e7490"
                 strokeWidth={2}
                 dot={false}
               />

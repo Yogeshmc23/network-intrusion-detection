@@ -1,6 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import { createHash } from 'crypto';
+import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import User from '../models/User';
+import RevokedRefreshToken from '../models/RevokedRefreshToken';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken, authenticate } from '../middleware/auth';
 import { AppError } from '../middleware/errorHandler';
 
@@ -22,6 +25,26 @@ const loginSchema = z.object({
 const refreshSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
 });
+
+const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
+
+async function revokeRefreshToken(token: string): Promise<boolean> {
+  const decoded = jwt.decode(token);
+  if (!decoded || typeof decoded === 'string' || typeof decoded.exp !== 'number') return false;
+  const expiresAt = new Date(decoded.exp * 1000);
+  if (expiresAt.getTime() <= Date.now()) return false;
+  try {
+    const result = await RevokedRefreshToken.updateOne(
+      { tokenHash: tokenHash(token) },
+      { $setOnInsert: { tokenHash: tokenHash(token), expiresAt } },
+      { upsert: true }
+    );
+    return result.upsertedCount === 1;
+  } catch (error: any) {
+    if (error?.code === 11000) return false;
+    throw error;
+  }
+}
 
 /**
  * @openapi
@@ -231,6 +254,9 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
       throw new AppError('Invalid or expired refresh token', 401, 'REFRESH_TOKEN_INVALID');
     }
 
+    const revoked = await RevokedRefreshToken.exists({ tokenHash: tokenHash(validated.refreshToken) });
+    if (revoked) throw new AppError('Invalid or expired refresh token', 401, 'REFRESH_TOKEN_REVOKED');
+
     const user = await User.findById(decoded.id);
     if (!user) {
       throw new AppError(
@@ -249,6 +275,11 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
 
     const newAccessToken = generateAccessToken(tokenPayload);
     const newRefreshToken = generateRefreshToken(tokenPayload);
+
+    // Atomically consume this refresh token before returning a replacement.
+    if (!(await revokeRefreshToken(validated.refreshToken))) {
+      throw new AppError('Invalid or expired refresh token', 401, 'REFRESH_TOKEN_REVOKED');
+    }
 
     res.status(200).json({
       success: true,
@@ -281,6 +312,39 @@ authRouter.post('/refresh', async (req: Request, res: Response, next: NextFuncti
  *       401:
  *         description: Unauthorized
  */
+/**
+ * @openapi
+ * /api/auth/logout:
+ *   post:
+ *     summary: Revoke the current refresh token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [refreshToken]
+ *             properties:
+ *               refreshToken: { type: string }
+ *     responses:
+ *       200:
+ *         description: Refresh token revoked when valid
+ */
+authRouter.post('/logout', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const validated = refreshSchema.parse(req.body);
+    let valid = true;
+    try { verifyRefreshToken(validated.refreshToken); } catch { valid = false; }
+    // Idempotent logout: unknown or expired tokens are already unusable.
+    // A valid token must be durably revoked before we acknowledge logout.
+    if (valid) await revokeRefreshToken(validated.refreshToken);
+    res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.get('/me', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const user = await User.findById(req.user!.id);

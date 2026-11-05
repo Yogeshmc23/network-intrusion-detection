@@ -5,15 +5,15 @@ import { useAuthStore } from '@/stores/authStore';
 
 function SessionLoadingScreen({ label }: { label: string }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-950 text-slate-300">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-600 via-cyan-500 to-purple-600 shadow-lg shadow-cyan-500/30">
+    <main id="main-content" tabIndex={-1} className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-950 text-slate-300">
+      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500 shadow-lg shadow-cyan-500/30">
         <Shield className="h-7 w-7 text-slate-950" />
       </div>
       <div className="flex items-center gap-2 text-sm">
         <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
         <span>{label}</span>
       </div>
-    </div>
+    </main>
   );
 }
 

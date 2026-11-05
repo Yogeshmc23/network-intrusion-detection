@@ -17,8 +17,8 @@ interface PredictionPieChartProps {
 }
 
 export function PredictionPieChart({
-  normalCount = 13449,
-  anomalyCount = 11743,
+  normalCount = 0,
+  anomalyCount = 0,
   className,
   size = 220,
 }: PredictionPieChartProps) {

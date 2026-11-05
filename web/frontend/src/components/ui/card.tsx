@@ -9,7 +9,7 @@ const Card = React.forwardRef<
     none: '',
     safe: 'shadow-[0_0_30px_-5px_rgba(6,182,212,0.25)] border-cyan-500/30',
     danger: 'shadow-[0_0_35px_-5px_rgba(239,68,68,0.3)] border-red-500/40',
-    accent: 'shadow-[0_0_30px_-5px_rgba(139,92,246,0.25)] border-purple-500/30',
+    accent: 'shadow-[0_0_24px_-7px_rgba(6,182,212,0.2)] border-cyan-700/40',
   }[glow];
 
   return (
