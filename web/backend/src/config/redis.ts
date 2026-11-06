@@ -1,3 +1,4 @@
+
 import Redis from 'ioredis';
 import env from './env';
 import logger from '../utils/logger';
@@ -6,16 +7,24 @@ let isConnected = false;
 
 export const redisClient = new Redis(env.REDIS_URL, {
   maxRetriesPerRequest: 1,
+
   retryStrategy(times) {
     if (times > 5) {
-      logger.warn('Redis reconnection limit reached. Operating in disconnected fallback mode.');
-      return null; // Stop retrying after 5 attempts
+      logger.warn(
+        'Redis reconnection limit reached. Operating in disconnected fallback mode.'
+      );
+      return null;
     }
+
     const delay = Math.min(times * 1000, 3000);
     return delay;
   },
-  lazyConnect: true,
-  enableOfflineQueue: false,
+
+  // Connect automatically when the Redis client is initialized.
+  lazyConnect: false,
+
+  // Queue commands while Redis is establishing its connection.
+  enableOfflineQueue: true,
 });
 
 redisClient.on('connect', () => {
@@ -40,9 +49,24 @@ redisClient.on('close', () => {
 
 export async function initRedis(): Promise<void> {
   try {
-    await redisClient.connect();
+    // Wait until the Redis connection is ready.
+    if (redisClient.status === 'wait') {
+      await redisClient.connect();
+    }
+
+    if (redisClient.status !== 'ready') {
+      await new Promise<void>((resolve, reject) => {
+        redisClient.once('ready', resolve);
+        redisClient.once('error', reject);
+      });
+    }
+
+    logger.info('Redis initialization completed successfully');
   } catch (error: any) {
-    logger.warn(`Redis initial connection failed (${error?.message || error}). Fallback cache will be used.`);
+    isConnected = false;
+    logger.warn(
+      `Redis initial connection failed (${error?.message || error}). Fallback cache will be used.`
+    );
   }
 }
 
@@ -54,6 +78,7 @@ export async function getCache(key: string): Promise<string | null> {
   if (!isRedisConnected()) {
     return null;
   }
+
   try {
     return await redisClient.get(key);
   } catch (err: any) {
@@ -62,10 +87,15 @@ export async function getCache(key: string): Promise<string | null> {
   }
 }
 
-export async function setCache(key: string, value: string, ttlSeconds: number): Promise<void> {
+export async function setCache(
+  key: string,
+  value: string,
+  ttlSeconds: number
+): Promise<void> {
   if (!isRedisConnected()) {
     return;
   }
+
   try {
     await redisClient.set(key, value, 'EX', ttlSeconds);
   } catch (err: any) {
@@ -74,8 +104,9 @@ export async function setCache(key: string, value: string, ttlSeconds: number): 
 }
 
 export async function disconnectRedis(): Promise<void> {
-  if (isRedisConnected()) {
+  if (redisClient.status !== 'end') {
     await redisClient.quit();
+    isConnected = false;
     logger.info('Redis disconnected cleanly');
   }
 }

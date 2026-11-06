@@ -238,7 +238,7 @@ predictionsRouter.post('/', authenticate, handleSinglePredict);
  * @openapi
  * /api/predict/batch:
  *   post:
- *     summary: Classify multiple traffic records via JSON array or CSV file upload (alias: /api/predict-batch)
+ *     summary: "Classify multiple traffic records via JSON array or CSV file upload (alias: /api/predict-batch)"
  *     tags: [Predictions]
  *     security:
  *       - bearerAuth: []
